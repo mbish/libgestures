@@ -119,7 +119,7 @@ namespace gestures {
 		in_fling_ = 1;
 		two_finger_time_ = 0;
 		last_scroll_ = 0;
-		curve_duration_ = 0.005f * max_start_velocity;
+		curve_duration_ = 0.0034f * max_start_velocity;
 		vel_[0] = gesture.details.fling.vx;
 		vel_[1] = gesture.details.fling.vy;
 		start_time_ = gesture.start_time;

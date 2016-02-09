@@ -1,3 +1,9 @@
+libgestures (2.1.17) vivid-galliumos; urgency=medium
+
+  * Reduced the sensitivity of the fling to scroll filter
+
+ -- Hugh Greenberg <hugh@galliumos.org>  Mon, 8 Feb 2016 21:05:33 +0000
+
 libgestures (2.1.16) vivid-galliumos; urgency=medium
 
   * Set package version to match provenance
