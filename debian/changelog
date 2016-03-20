@@ -1,3 +1,9 @@
+libgestures (2.1.17-xenial) xenial; urgency=medium
+
+  * Package for xenial
+
+ -- Hugh Greenberg <hugh@galliumos.org>  Fri, 18 Mar 2016 21:05:33 +0000
+
 libgestures (2.1.17) vivid-galliumos; urgency=medium
 
   * Reduced the sensitivity of the fling to scroll filter
