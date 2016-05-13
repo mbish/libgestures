@@ -349,7 +349,15 @@ void HardwareStateBuffer::PopState() {
 
 ScrollManager::ScrollManager(PropRegistry* prop_reg)
     : prev_result_suppress_finger_movement_(false),
+      in_fling_(false),
       did_generate_scroll_(false),
+      scroll_timeout_(0.016f),
+      two_finger_time_(0),
+      last_scroll_(0),
+      start_time_(0),
+      curve_duration_(0.2f),
+      last_fling_vx_(0),
+      last_fling_vy_(0),
       max_stationary_move_speed_(prop_reg, "Max Stationary Move Speed", 0.0),
       max_stationary_move_speed_hysteresis_(
           prop_reg, "Max Stationary Move Speed Hysteresis", 0.0),
@@ -377,7 +385,52 @@ ScrollManager::ScrollManager(PropRegistry* prop_reg)
           prop_reg, "Fling Buffer Suppress Zero Length Scrolls", 1),
       fling_buffer_min_avg_speed_(prop_reg,
                                   "Fling Buffer Min Avg Speed",
-                                  10.0) {
+                                  10.0),
+      fling_to_scroll_enabled_(prop_reg, "Fling To Scroll Enabled", 1) {
+}
+    
+void ScrollManager::ProduceScrollToFling(stime_t now, stime_t *timeout,
+					 Gesture *result) {
+  float scroll_x, scroll_y;
+  float distance = 1.0;
+  double vel;
+  
+  result->type = kGestureTypeNull;
+  scroll_x = scroll_y = 0;
+  
+  if (now - start_time_ >= curve_duration_) {
+    in_fling_ = false;
+  }
+  
+  if (!in_fling_)
+    return;
+
+  if (*timeout > scroll_timeout_ || *timeout < 0) {
+    *timeout = scroll_timeout_;
+  }
+
+  if (now - last_scroll_ < scroll_timeout_)
+    return;
+
+  distance = 1.0;
+  last_scroll_ = now;
+  vel = vel_[0];
+  if (vel && vel > 0)
+    scroll_x = distance;
+  else if (vel && vel < 0)
+    scroll_x = -distance;
+  
+  vel = vel_[1];
+  if (vel && vel > 0)
+    scroll_y = distance;
+  else if (vel && vel < 0)
+    scroll_y = -distance;
+  
+  *result = Gesture(kGestureScroll,
+		    now,
+		    now,
+		    scroll_x,
+		    scroll_y);
 }
 
 bool ScrollManager::StationaryFingerPressureChangingSignificantly(
@@ -457,6 +510,7 @@ bool ScrollManager::ComputeScroll(
   float dx = 0.0;
   float dy = 0.0;
   bool suppress_finger_movement = false;
+
   for (FingerMap::const_iterator it =
            gs_fingers.begin(), e = gs_fingers.end(); it != e; ++it) {
     const FingerState* fs = state_buffer.Get(0)->GetFingerState(*it);
@@ -493,7 +547,7 @@ bool ScrollManager::ComputeScroll(
 
   prev_result_suppress_finger_movement_ = suppress_finger_movement;
   if (suppress_finger_movement) {
-    // If we get here, it means that the pressure of the finger causing
+      // If we get here, it means that the pressure of the finger causing
     // the scroll is changing a lot, so we don't trust it. It's likely
     // leaving the touchpad. Normally we might just do nothing, but having
     // a frame or two of 0 length scroll before a fling looks janky. We
@@ -515,10 +569,10 @@ bool ScrollManager::ComputeScroll(
       *result = prev_result;
     } else if (min_scroll_dead_reckoning_.val_ > 0.0) {
       scroll_buffer->Clear();
+      return false;
     }
-    return false;
   }
-
+  
   if (max_mag_sq > 0) {
     did_generate_scroll_ = true;
     *result = Gesture(kGestureScroll,
@@ -559,8 +613,13 @@ size_t ScrollManager::ScrollEventsForFlingCount(
       direction = event.dx > 0 ? kRight : kLeft;
     else
       direction = event.dy > 0 ? kDown : kUp;
-    if (i > 0 && direction != prev_direction)
+
+    Log("Direction is: %d", direction);
+    if (i > 0 && direction != prev_direction) {
+      Log("Direction: %d does != prev_direction: %d", direction, prev_direction);
+      i = 0;
       break;
+    }
     prev_direction = direction;
   }
   return i;
@@ -657,7 +716,7 @@ bool ScrollManager::SuppressStationaryFingerMovement(const FingerState& fs,
 
 void ScrollManager::ComputeFling(const HardwareStateBuffer& state_buffer,
                                  const ScrollEventBuffer& scroll_buffer,
-                                 Gesture* result) const {
+                                 Gesture* result) {
   if (!did_generate_scroll_)
     return;
   ScrollEvent out = { 0.0, 0.0, 0.0 };
@@ -695,9 +754,23 @@ void ScrollManager::ComputeFling(const HardwareStateBuffer& state_buffer,
 done:
   float vx = out.dt ? (out.dx / out.dt) : 0.0;
   float vy = out.dt ? (out.dy / out.dt) : 0.0;
+  float max_start_velocity = std::max(fabs(vx),
+				      fabs(vy));  
+
+  if (max_start_velocity > 0) {
+      in_fling_ = true;
+      two_finger_time_ = 0;
+      curve_duration_ = 0.0034f * max_start_velocity;
+      vel_[0] = vx;
+      vel_[1] = vy;
+      start_time_ = state_buffer.Get(0)->timestamp;
+      last_fling_vx_ = vx;
+      last_fling_vy_ = vy;
+  }
+  
   *result = Gesture(kGestureFling,
-                    state_buffer.Get(1)->timestamp,
                     state_buffer.Get(0)->timestamp,
+                    state_buffer.Get(1)->timestamp,
                     vx,
                     vy,
                     GESTURES_FLING_START);
@@ -1148,6 +1221,16 @@ void ImmediateInterpreter::SyncInterpretImpl(HardwareState* hwstate,
   prev_gesture_type_ = current_gesture_type_;
   if (result_.type != kGestureTypeNull)
     ProduceGesture(result_);
+
+  if (result_.type == kGestureTypeMove)
+    scroll_manager_.in_fling_ = false;
+  
+  scroll_manager_.ProduceScrollToFling(hwstate->timestamp, timeout, &result_);
+  if (result_.type != kGestureTypeNull) {
+    prev_result_ = result_;
+    prev_gesture_type_ = kGestureTypeScroll;
+    ProduceGesture(result_);
+  }
 }
 
 void ImmediateInterpreter::HandleTimerImpl(stime_t now, stime_t* timeout) {
@@ -1161,7 +1244,17 @@ void ImmediateInterpreter::HandleTimerImpl(stime_t now, stime_t* timeout) {
                    now,
                    timeout);
   if (result_.type != kGestureTypeNull)
+      ProduceGesture(result_);
+
+  if (result_.type == kGestureTypeMove)
+    scroll_manager_.in_fling_ = false;
+
+  scroll_manager_. ProduceScrollToFling(now, timeout, &result_);
+  if (result_.type != kGestureTypeNull) {
+    prev_result_ = result_;
+    prev_gesture_type_ = kGestureTypeScroll;
     ProduceGesture(result_);
+  }
 }
 
 void ImmediateInterpreter::FillOriginInfo(

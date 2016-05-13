@@ -59,7 +59,6 @@ class TapRecord {
   void NoteTouch(short the_id, const FingerState& fs);  // Adds to touched_
   void NoteRelease(short the_id);  // Adds to released_
   void Remove(short the_id);  // Removes from touched_ and released_
-
   float CotapMinPressure() const;
 
   map<short, FingerState, kMaxTapFingers> touched_;
@@ -151,6 +150,8 @@ class ScrollManager {
   explicit ScrollManager(PropRegistry* prop_reg);
   ~ScrollManager() {}
 
+  void ProduceScrollToFling(stime_t now, stime_t *timeout, Gesture *result);
+
   // Returns true if a finger's movement should be suppressed based on
   // max_stationary_move_* properties below.
   bool SuppressStationaryFingerMovement(const FingerState& fs,
@@ -177,7 +178,7 @@ class ScrollManager {
   // Compute a ScrollEvent that can be turned directly into a fling.
   void ComputeFling(const HardwareStateBuffer& state_buffer,
                     const ScrollEventBuffer& scroll_buffer,
-                    Gesture* result) const;
+                    Gesture* result);
 
   // Update ScrollEventBuffer when the current gesture type is not scroll.
   void UpdateScrollEventBuffer(GestureType gesture_type,
@@ -190,12 +191,23 @@ class ScrollManager {
   // Set to true when a scroll or move is blocked b/c of high pressure
   // change or small movement. Cleared when a normal scroll or move
   // goes through.
+  
   bool prev_result_suppress_finger_movement_;
+  int in_fling_;
 
  private:
   // Set to true when generating a non-zero scroll gesture. Reset to false
   // when a fling is generated.
   bool did_generate_scroll_;
+
+  float scroll_timeout_;
+  stime_t two_finger_time_;
+  stime_t last_scroll_;
+  stime_t start_time_;
+  double curve_duration_;
+  double vel_[2];
+  float last_fling_vx_;
+  float last_fling_vy_;
 
   // Returns the number of most recent event events in the scroll_buffer_ that
   // should be considered for fling. If it returns 0, there should be no fling.
@@ -260,6 +272,10 @@ class ScrollManager {
   // When computing a fling, if the fling buffer has an average speed under
   // this threshold, we do not perform a fling. Units are mm/sec.
   DoubleProperty fling_buffer_min_avg_speed_;
+
+  // Converts flings to scroll events
+  BoolProperty fling_to_scroll_enabled_;
+
 };
 
 // Helper class for computing the button type of multi-finger clicks.
@@ -669,7 +685,7 @@ class ImmediateInterpreter : public Interpreter, public PropertyDelegate {
 
   ScrollManager scroll_manager_;
 
-  // Properties
+    // Properties
 
   // Is Tap-To-Click enabled
   BoolProperty tap_enable_;
