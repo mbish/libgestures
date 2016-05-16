@@ -149,8 +149,9 @@ class ScrollManager {
  public:
   explicit ScrollManager(PropRegistry* prop_reg);
   ~ScrollManager() {}
-
-  void ProduceScrollToFling(stime_t now, stime_t *timeout, Gesture *result);
+  
+  void FlingToScrollTwoFingerCheck(HardwareState* hwstate);
+  void ProduceFlingToScroll(stime_t now, stime_t *timeout, Gesture *result);
 
   // Returns true if a finger's movement should be suppressed based on
   // max_stationary_move_* properties below.
@@ -201,14 +202,14 @@ class ScrollManager {
   bool did_generate_scroll_;
 
   float scroll_timeout_;
-  stime_t two_finger_time_;
   stime_t last_scroll_;
   stime_t start_time_;
   double curve_duration_;
   double vel_[2];
   float last_fling_vx_;
   float last_fling_vy_;
-
+  stime_t two_finger_time_;
+  
   // Returns the number of most recent event events in the scroll_buffer_ that
   // should be considered for fling. If it returns 0, there should be no fling.
   size_t ScrollEventsForFlingCount(const ScrollEventBuffer& scroll_buffer)
@@ -402,7 +403,8 @@ class ImmediateInterpreter : public Interpreter, public PropertyDelegate {
   virtual void Initialize(const HardwareProperties* hwprops,
                           Metrics* metrics, MetricsProperties* mprops,
                           GestureConsumer* consumer);
-
+  void CheckMovementForFlingToScroll(const Gesture& result);
+  
  public:
   TapToClickState tap_to_click_state() const { return tap_to_click_state_; }
 
@@ -827,6 +829,8 @@ class ImmediateInterpreter : public Interpreter, public PropertyDelegate {
   DoubleProperty right_click_second_finger_age_;
   // Suppress moves with a speed more than this much times the previous speed.
   DoubleProperty quick_acceleration_factor_;
+  double movement_x_;
+  double movement_y_;
 };
 
 bool AnyGesturingFingerLeft(const HardwareState& state,

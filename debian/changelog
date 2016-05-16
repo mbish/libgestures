@@ -1,3 +1,9 @@
+libgestures (2.1.18) xenial; urgency=medium
+
+  * Fix for fling to scroll filter
+
+ -- Hugh Greenberg <hugh@galliumos.org>  Sat, 23 Apr 2016 21:05:33 +0000
+
 libgestures (2.1.17-xenial) xenial; urgency=medium
 
   * Package for xenial

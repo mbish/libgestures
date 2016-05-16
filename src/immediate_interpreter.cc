@@ -351,13 +351,13 @@ ScrollManager::ScrollManager(PropRegistry* prop_reg)
     : prev_result_suppress_finger_movement_(false),
       in_fling_(false),
       did_generate_scroll_(false),
-      scroll_timeout_(0.016f),
-      two_finger_time_(0),
+      scroll_timeout_(0.012f),
       last_scroll_(0),
       start_time_(0),
       curve_duration_(0.2f),
       last_fling_vx_(0),
       last_fling_vy_(0),
+      two_finger_time_(0),
       max_stationary_move_speed_(prop_reg, "Max Stationary Move Speed", 0.0),
       max_stationary_move_speed_hysteresis_(
           prop_reg, "Max Stationary Move Speed Hysteresis", 0.0),
@@ -388,8 +388,19 @@ ScrollManager::ScrollManager(PropRegistry* prop_reg)
                                   10.0),
       fling_to_scroll_enabled_(prop_reg, "Fling To Scroll Enabled", 1) {
 }
-    
-void ScrollManager::ProduceScrollToFling(stime_t now, stime_t *timeout,
+
+void ScrollManager::FlingToScrollTwoFingerCheck(HardwareState* hwstate) {
+    if (hwstate->finger_cnt == 2 && !two_finger_time_)
+	two_finger_time_ = hwstate->timestamp;
+    else if (hwstate->finger_cnt == 2 && in_fling_ &&
+	     hwstate->timestamp - two_finger_time_ > scroll_timeout_ * 3) {
+	in_fling_ = false;
+    } else if (hwstate->finger_cnt != 2) {
+      two_finger_time_ = 0;
+    }
+}
+  
+void ScrollManager::ProduceFlingToScroll(stime_t now, stime_t *timeout,
 					 Gesture *result) {
   float scroll_x, scroll_y;
   float distance = 1.0;
@@ -412,7 +423,7 @@ void ScrollManager::ProduceScrollToFling(stime_t now, stime_t *timeout,
   if (now - last_scroll_ < scroll_timeout_)
     return;
 
-  distance = 1.0;
+  distance = 1.0f - (now - start_time_)/(curve_duration_ * 2.0f);
   last_scroll_ = now;
   vel = vel_[0];
   if (vel && vel > 0)
@@ -546,7 +557,7 @@ bool ScrollManager::ComputeScroll(
     dx = 0.0;  // snap to vertical
 
   prev_result_suppress_finger_movement_ = suppress_finger_movement;
-  if (suppress_finger_movement) {
+  /*  if (suppress_finger_movement) {
       // If we get here, it means that the pressure of the finger causing
     // the scroll is changing a lot, so we don't trust it. It's likely
     // leaving the touchpad. Normally we might just do nothing, but having
@@ -572,7 +583,7 @@ bool ScrollManager::ComputeScroll(
       return false;
     }
   }
-  
+  */
   if (max_mag_sq > 0) {
     did_generate_scroll_ = true;
     *result = Gesture(kGestureScroll,
@@ -617,7 +628,9 @@ size_t ScrollManager::ScrollEventsForFlingCount(
     Log("Direction is: %d", direction);
     if (i > 0 && direction != prev_direction) {
       Log("Direction: %d does != prev_direction: %d", direction, prev_direction);
-      i = 0;
+      if (i <= 2)
+	i = 0;
+      
       break;
     }
     prev_direction = direction;
@@ -760,12 +773,13 @@ done:
   if (max_start_velocity > 0) {
       in_fling_ = true;
       two_finger_time_ = 0;
-      curve_duration_ = 0.0034f * max_start_velocity;
+      curve_duration_ = 0.002f * max_start_velocity;
       vel_[0] = vx;
       vel_[1] = vy;
       start_time_ = state_buffer.Get(0)->timestamp;
       last_fling_vx_ = vx;
       last_fling_vy_ = vy;
+      two_finger_time_ = 0;
   }
   
   *result = Gesture(kGestureFling,
@@ -1157,9 +1171,24 @@ ImmediateInterpreter::ImmediateInterpreter(PropRegistry* prop_reg,
       right_click_second_finger_age_(prop_reg,
                                      "Right Click Second Finger Age Thresh",
                                      0.5),
-      quick_acceleration_factor_(prop_reg, "Quick Acceleration Factor", 0.0) {
+      quick_acceleration_factor_(prop_reg, "Quick Acceleration Factor", 0.0),
+      movement_x_(0),
+      movement_y_(0) {
   InitName();
   requires_metrics_ = true;
+}
+
+void ImmediateInterpreter::CheckMovementForFlingToScroll(const Gesture& result) {
+  if (result.type == kGestureTypeMove) {
+    movement_x_ += fabs(result.details.move.dx);
+    movement_y_ += fabs(result.details.move.dy);
+    float max_movement = std::max(movement_x_, movement_y_);
+    if (max_movement > 5.0 && scroll_manager_.in_fling_) {
+      scroll_manager_.in_fling_ = false;
+      ProduceGesture(result);
+    } else if (!scroll_manager_.in_fling_)
+      ProduceGesture(result);
+  }
 }
 
 void ImmediateInterpreter::SyncInterpretImpl(HardwareState* hwstate,
@@ -1219,20 +1248,19 @@ void ImmediateInterpreter::SyncInterpretImpl(HardwareState* hwstate,
   prev_gs_fingers_ = gs_fingers;
   prev_result_ = result_;
   prev_gesture_type_ = current_gesture_type_;
-  if (result_.type != kGestureTypeNull)
-    ProduceGesture(result_);
+  if (result_.type != kGestureTypeNull && result_.type != kGestureTypeMove)
+      ProduceGesture(result_);
 
-  if (result_.type == kGestureTypeMove)
-    scroll_manager_.in_fling_ = false;
-  
-  scroll_manager_.ProduceScrollToFling(hwstate->timestamp, timeout, &result_);
+  CheckMovementForFlingToScroll(result_);
+  scroll_manager_.FlingToScrollTwoFingerCheck(hwstate);
+  scroll_manager_.ProduceFlingToScroll(hwstate->timestamp, timeout, &result_);
   if (result_.type != kGestureTypeNull) {
     prev_result_ = result_;
     prev_gesture_type_ = kGestureTypeScroll;
     ProduceGesture(result_);
   }
 }
-
+  
 void ImmediateInterpreter::HandleTimerImpl(stime_t now, stime_t* timeout) {
   result_.type = kGestureTypeNull;
   // Tap-to-click always aborts when real button(s) are being used, so we
@@ -1243,13 +1271,11 @@ void ImmediateInterpreter::HandleTimerImpl(stime_t now, stime_t* timeout) {
                    false,
                    now,
                    timeout);
-  if (result_.type != kGestureTypeNull)
+  if (result_.type != kGestureTypeNull && result_.type != kGestureTypeMove)
       ProduceGesture(result_);
 
-  if (result_.type == kGestureTypeMove)
-    scroll_manager_.in_fling_ = false;
-
-  scroll_manager_. ProduceScrollToFling(now, timeout, &result_);
+  CheckMovementForFlingToScroll(result_);
+  scroll_manager_.ProduceFlingToScroll(now, timeout, &result_);
   if (result_.type != kGestureTypeNull) {
     prev_result_ = result_;
     prev_gesture_type_ = kGestureTypeScroll;
@@ -2835,6 +2861,7 @@ void ImmediateInterpreter::FillResultGesture(
     }
     case kGestureTypeFling: {
       scroll_manager_.ComputeFling(state_buffer_, scroll_buffer_, &result_);
+      movement_x_ = movement_y_ = 0;
       break;
     }
     case kGestureTypeSwipe: {

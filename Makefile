@@ -40,7 +40,6 @@ SO_OBJECTS=\
 	$(OBJDIR)/trace_marker.o \
 	$(OBJDIR)/tracer.o \
 	$(OBJDIR)/trend_classifying_filter_interpreter.o \
- 	$(OBJDIR)/fling_to_scroll_filter_interpreter.o \
 	$(OBJDIR)/util.o \
 	$(OBJDIR)/log.o
 

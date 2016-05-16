@@ -32,7 +32,6 @@
 #include "gestures/include/split_correcting_filter_interpreter.h"
 #include "gestures/include/string_util.h"
 #include "gestures/include/stuck_button_inhibitor_filter_interpreter.h"
-#include "gestures/include/fling_to_scroll_filter_interpreter.h"
 #include "gestures/include/t5r2_correcting_filter_interpreter.h"
 #include "gestures/include/trace_marker.h"
 #include "gestures/include/tracer.h"
