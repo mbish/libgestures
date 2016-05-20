@@ -351,7 +351,7 @@ ScrollManager::ScrollManager(PropRegistry* prop_reg)
     : prev_result_suppress_finger_movement_(false),
       in_fling_(false),
       did_generate_scroll_(false),
-      scroll_timeout_(0.012f),
+      scroll_timeout_(0.01f),
       last_scroll_(0),
       start_time_(0),
       curve_duration_(0.2f),
@@ -390,6 +390,11 @@ ScrollManager::ScrollManager(PropRegistry* prop_reg)
 }
 
 void ScrollManager::FlingToScrollTwoFingerCheck(HardwareState* hwstate) {
+    if (!in_fling_) {
+	two_finger_time_ = 0;
+	return;
+    }
+
     if (hwstate->finger_cnt == 2 && !two_finger_time_)
 	two_finger_time_ = hwstate->timestamp;
     else if (hwstate->finger_cnt == 2 && in_fling_ &&
@@ -423,7 +428,7 @@ void ScrollManager::ProduceFlingToScroll(stime_t now, stime_t *timeout,
   if (now - last_scroll_ < scroll_timeout_)
     return;
 
-  distance = 1.0f - (now - start_time_)/(curve_duration_ * 2.0f);
+  distance = 1.0f - (now - start_time_)/(curve_duration_ * 3.0f);
   last_scroll_ = now;
   vel = vel_[0];
   if (vel && vel > 0)
@@ -584,6 +589,7 @@ bool ScrollManager::ComputeScroll(
     }
   }
   */
+  
   if (max_mag_sq > 0) {
     did_generate_scroll_ = true;
     *result = Gesture(kGestureScroll,
@@ -1185,9 +1191,9 @@ void ImmediateInterpreter::CheckMovementForFlingToScroll(const Gesture& result) 
     float max_movement = std::max(movement_x_, movement_y_);
     if (max_movement > 5.0 && scroll_manager_.in_fling_) {
       scroll_manager_.in_fling_ = false;
-      ProduceGesture(result);
-    } else if (!scroll_manager_.in_fling_)
-      ProduceGesture(result);
+    }
+
+    ProduceGesture(result);
   }
 }
 
@@ -1256,7 +1262,8 @@ void ImmediateInterpreter::SyncInterpretImpl(HardwareState* hwstate,
   scroll_manager_.ProduceFlingToScroll(hwstate->timestamp, timeout, &result_);
   if (result_.type != kGestureTypeNull) {
     prev_result_ = result_;
-    prev_gesture_type_ = kGestureTypeScroll;
+    prev_gesture_type_ = current_gesture_type_;
+    current_gesture_type_ = kGestureTypeScroll;
     ProduceGesture(result_);
   }
 }
@@ -1278,7 +1285,8 @@ void ImmediateInterpreter::HandleTimerImpl(stime_t now, stime_t* timeout) {
   scroll_manager_.ProduceFlingToScroll(now, timeout, &result_);
   if (result_.type != kGestureTypeNull) {
     prev_result_ = result_;
-    prev_gesture_type_ = kGestureTypeScroll;
+    prev_gesture_type_ = current_gesture_type_;
+    current_gesture_type_ = kGestureTypeScroll;
     ProduceGesture(result_);
   }
 }
@@ -1611,8 +1619,12 @@ void ImmediateInterpreter::UpdateCurrentGestureType(
                     hwstate.timestamp -
                         max(origin_timestamps_[fingers[0]->tracking_id],
                             origin_timestamps_[fingers[1]->tracking_id]) <
-                    evaluation_timeout_.val_)
-                  new_gs_type = kGestureTypeNull;
+                    evaluation_timeout_.val_ * 2.0f) {
+		  if (current_gesture_type_ == kGestureTypeScroll)
+		    new_gs_type = kGestureTypeScroll;
+		  else
+		    new_gs_type = kGestureTypeNull;
+		}
               }
               if (new_gs_type != kGestureTypeMove ||
                   gs_fingers.size() == 2) {

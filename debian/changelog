@@ -1,3 +1,16 @@
+libgestures (2.1.20) xenial; urgency=medium
+
+  * Fixe for scrolling
+
+ -- Hugh Greenberg <hugh@galliumos.org>  Thu, 19 May 2016 21:05:33 +0000
+
+libgestures (2.1.19) xenial; urgency=medium
+
+  * Moved fling to scroll filter to immediate interpreter
+  * Multiple fixes for scrolling and fling to scroll
+
+ -- Hugh Greenberg <hugh@galliumos.org>  Tue, 17 May 2016 21:05:33 +0000
+
 libgestures (2.1.18) xenial; urgency=medium
 
   * Fix for fling to scroll filter
