@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include <memory>
+#include <cmath>
 #include <gtest/gtest.h>  // for FRIEND_TEST
 
 #include "gestures/include/filter_interpreter.h"
