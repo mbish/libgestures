@@ -1,0 +1,24 @@
+From a6a0d85443d188aa1adeaabeedc158d4bd59117b Mon Sep 17 00:00:00 2001
+From: Mark Bishop <mbish@umich.edu>
+Date: Thu, 26 Jan 2017 10:01:34 -0500
+Subject: [PATCH] Fixed cmath header to prevent sqrt error
+
+---
+ include/gestures/include/box_filter_interpreter.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/gestures/include/box_filter_interpreter.h b/include/gestures/include/box_filter_interpreter.h
+index f78a42d..068432f 100644
+--- a/include/gestures/include/box_filter_interpreter.h
++++ b/include/gestures/include/box_filter_interpreter.h
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include <memory>
++#include <cmath>
+ #include <gtest/gtest.h>  // for FRIEND_TEST
+ 
+ #include "gestures/include/filter_interpreter.h"
+-- 
+2.11.0
+
